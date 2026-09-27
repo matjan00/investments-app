@@ -2,6 +2,9 @@
   "name": "investments-app",
   "private": true,
   "type": "module",
+  "scripts": {
+    "test": "node --test tests/calc.test.js"
+  },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.2"
   }
