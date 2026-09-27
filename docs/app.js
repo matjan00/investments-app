@@ -29,7 +29,7 @@ const store = {
   set: (k, v) => { try { localStorage.setItem(k, v); } catch { /* ignore */ } },
 };
 const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-const PALETTE = ['#2f6fe4', '#16a37f', '#e0892b', '#8b5cf6', '#e0527a', '#0ea5c6', '#a3a33a', '#6b7280', '#c2410c', '#65a30d'];
+const PALETTE = ['#3b6ef5', '#12b886', '#f59f00', '#845ef7', '#f06595', '#15aabf', '#82c91e', '#fd7e14', '#94a3b8', '#be4bdb'];
 
 async function must(q) {
   const { data, error } = await q;
@@ -43,6 +43,15 @@ let loadedAt = 0;
 let tab = store.get('tab', 'overview');
 let historyRange = store.get('range', 'all');
 const charts = {};
+
+// Vertical gradient under a line: colour at the top fading to transparent.
+const fade = (hex) => ({ chart: c }) => {
+  if (!c.chartArea) return 'transparent';
+  const g = c.ctx.createLinearGradient(0, c.chartArea.top, 0, c.chartArea.bottom);
+  g.addColorStop(0, `${hex}40`);
+  g.addColorStop(1, `${hex}00`);
+  return g;
+};
 
 function chart(id, config) {
   charts[id]?.destroy();
@@ -149,21 +158,42 @@ document.addEventListener('visibilitychange', () => {
 });
 
 // ---------- overview ----------
-function positionRow(p) {
+const allocKey = (ins) => (ins.kind === 'bond' ? 'EDO bonds' : ins.id);
+
+function positionRow(p, color) {
   const ins = p.instrument;
-  const priceText = p.price == null ? 'price pending' : zl2(p.price);
-  return `<div class="row">
-    <div class="left">
-      <b>${esc(ins.id)}</b><span class="chip">${esc(p.account?.name.replace('XTB ', '') ?? '')}</span>
+  const acc = p.account?.name.replace('XTB ', '') ?? '';
+  const today = Math.abs(p.dayChange) >= 0.5 ? `<span class="${cls(p.dayChange)}">${szl(p.dayChange)} today</span>` : '';
+  return `<div class="pos">
+    <div class="avatar" style="--c:${color}">${esc(ins.id.slice(0, 2))}</div>
+    <div class="pos-main">
+      <div class="pos-title"><b>${esc(ins.id)}</b><span class="chip grey">${esc(acc)}</span></div>
       <div class="sub">${esc(ins.name)}</div>
-      <div class="sub">${fmtN.format(p.units)} × ${priceText} · avg ${zl2(p.avgCost)}</div>
+      <div class="sub">${fmtN.format(p.units)} × ${p.price == null ? 'price pending' : zl2(p.price)}</div>
     </div>
-    <div class="right">
+    <div class="pos-num">
       <b>${zl(p.value)}</b>
-      <div class="small ${cls(p.gain)}">${szl(p.gain)} (${pct(p.gainPct)})</div>
-      ${Math.abs(p.dayChange) >= 0.5 ? `<div class="small muted">today <span class="${cls(p.dayChange)}">${szl(p.dayChange)}</span></div>` : ''}
+      <span class="pill ${cls(p.gain)}">${pct(p.gainPct)}</span>
+      <div class="sub">${szl(p.gain)}${today ? ` · ${today}` : ''}</div>
     </div>
   </div>`;
+}
+
+function goalTeaser() {
+  const b = goalBase();
+  const s = data.settings;
+  const progress = Math.min(1, b.start / b.target);
+  const res = projectGoal({ start: b.start, startCost: b.startCost, monthly: Number(s.monthly_pln), annualReturn: Number(s.expected_return), target: b.target });
+  const when = res.months == null ? '—' : res.months === 0 ? 'Reached 🎉' : monthYear(addMonths(new Date(), res.months));
+  return `<button class="card goal-teaser" data-go="goal">
+    <div class="teaser-top">
+      <span class="teaser-icon"><svg viewBox="0 0 24 24"><path d="M3 11l9-7 9 7M5 10v10h14V10M10 20v-6h4v6"/></svg></span>
+      <div><div class="label">Home down payment</div><b>${zl(b.start)}</b> <span class="muted">/ ${zl(b.target)}</span></div>
+      <div class="teaser-when"><div class="label">Ready by</div><b>${when}</b></div>
+    </div>
+    <div class="progress"><div style="width:${(progress * 100).toFixed(1)}%"></div></div>
+    <div class="teaser-foot"><span>${(progress * 100).toFixed(0)}% saved</span><span>at ${zl(s.monthly_pln)}/month · ${Number(s.expected_return)}% a year ›</span></div>
+  </button>`;
 }
 
 function renderOverview(el) {
@@ -174,58 +204,61 @@ function renderOverview(el) {
   const lastPrice = priceDates.at(-1);
   const groups = [['etf', 'ETFs'], ['bond', 'Treasury bonds']];
 
+  // Allocation: combine the same ETF across accounts; colours are shared with the holdings list.
+  const byIns = new Map();
+  for (const x of p.positions) byIns.set(allocKey(x.instrument), (byIns.get(allocKey(x.instrument)) || 0) + x.value);
+  if (cash > 0) byIns.set('Cash', cash);
+  const entries = [...byIns.entries()].sort((a, b) => b[1] - a[1]);
+  const sum = entries.reduce((s, e) => s + e[1], 0);
+  const colorOf = Object.fromEntries(entries.map(([k], i) => [k, PALETTE[i % PALETTE.length]]));
+
   el.innerHTML = `
-    <div class="card hero">
-      <div class="label">Total portfolio</div>
-      <div class="big">${zl(p.total)}</div>
-      <div class="${cls(gain)}"><b>${szl(gain)}</b> (${pct(p.cost ? gain / p.cost : 0)}) <span class="muted">all time</span></div>
-      <div class="meta">
-        <span>Today <b class="${cls(p.dayChange)}">${szl(p.dayChange)}</b></span>
-        <span>Invested <b>${zl(p.cost)}</b></span>
-        ${cash ? `<span>Cash to invest <b>${zl(cash)}</b></span>` : ''}
+    <div class="hero">
+      <div class="hero-label">Total portfolio</div>
+      <div class="hero-value">${zl(p.total)}</div>
+      <div class="hero-gain ${cls(gain)}"><span class="pill">${szl(gain)} · ${pct(p.cost ? gain / p.cost : 0)}</span> all time</div>
+      <div class="stats">
+        <div><span>Today</span><b class="${cls(p.dayChange)}">${szl(p.dayChange)}</b></div>
+        <div><span>Invested</span><b>${zl(p.cost)}</b></div>
+        <div><span>Cash</span><b>${zl(cash)}</b></div>
       </div>
-      <div class="small muted">${lastPrice ? `ETF prices from ${niceDate(lastPrice)} · updated automatically every weekday evening` : 'Prices will appear after the first daily update'}</div>
+      <div class="hero-foot">${lastPrice ? `Prices from ${niceDate(lastPrice)} · auto-updated every weekday` : 'Prices appear after the first daily update'}</div>
     </div>
-    ${p.warnings.map((w) => `<div class="warn">⚠️ <b>${esc(w.instrument.id)}</b> started interest year ${w.year}. Enter the new rate so the value is exact (using last year's rate for now).
-      <div><button class="ghost small-btn" data-rates="${esc(w.instrument.id)}">Enter rate</button></div></div>`).join('')}
-    ${p.oversold.map((o) => `<div class="warn">⚠️ The sale of ${fmtN.format(o.tx.units)} <b>${esc(o.tx.instrument_id)}</b> on ${niceDate(o.tx.date)} is more than you held then (${fmtN.format(o.held)}). Check its date in Activity.</div>`).join('')}
-    <div class="card"><h2>Allocation</h2><div class="chart-wrap pie"><canvas id="c-alloc"></canvas></div></div>
+    ${p.warnings.map((w) => `<div class="warn">⚠️ <div><b>${esc(w.instrument.id)}</b> started interest year ${w.year}. Enter the new rate so the value is exact (using last year's rate for now).
+      <div><button class="ghost small-btn" data-rates="${esc(w.instrument.id)}">Enter rate</button></div></div></div>`).join('')}
+    ${p.oversold.map((o) => `<div class="warn">⚠️ <div>The sale of ${fmtN.format(o.tx.units)} <b>${esc(o.tx.instrument_id)}</b> on ${niceDate(o.tx.date)} is more than you held then (${fmtN.format(o.held)}). Check its date in Activity.</div></div>`).join('')}
+    ${goalTeaser()}
+    <div class="card">
+      <h2>Allocation</h2>
+      <div class="alloc">
+        <div class="donut"><canvas id="c-alloc"></canvas><div class="donut-center"><span>${entries.length}</span>parts</div></div>
+        <ul class="legend">${entries.map(([k, v]) => `<li><i style="background:${colorOf[k]}"></i><span>${esc(k)}</span><b>${(v / sum * 100).toFixed(1)}%</b><em>${zl(v)}</em></li>`).join('')}</ul>
+      </div>
+    </div>
     ${groups.map(([kind, title]) => {
       const rows = p.positions.filter((x) => x.instrument.kind === kind).sort((a, b) => b.value - a.value);
       if (!rows.length) return '';
       const v = rows.reduce((s, x) => s + x.value, 0);
       const g = rows.reduce((s, x) => s + x.gain, 0);
       return `<div class="card"><h2>${title} <span class="muted">${zl(v)} · <span class="${cls(g)}">${szl(g)}</span></span></h2>
-        <div class="rows">${rows.map(positionRow).join('')}</div></div>`;
+        <div class="rows">${rows.map((x) => positionRow(x, colorOf[allocKey(x.instrument)])).join('')}</div></div>`;
     }).join('')}
-    <p class="small muted" style="text-align:center">IKE money is shown here but not counted toward the home goal.
-      <br><button class="link small" id="signout">Log out</button></p>`;
+    <p class="footnote">IKE is shown here but not counted toward the home goal.<br><button class="link" id="signout">Log out</button></p>`;
 
   el.querySelectorAll('[data-rates]').forEach((b) => b.addEventListener('click', () => editBondForm(b.dataset.rates)));
+  $('[data-go]', el).addEventListener('click', () => { showTab('goal'); window.scrollTo(0, 0); });
   $('#signout', el).addEventListener('click', () => db.auth.signOut());
 
-  // Allocation doughnut: combine the same ETF across accounts.
-  const byIns = new Map();
-  for (const x of p.positions) {
-    const k = x.instrument.kind === 'bond' ? 'EDO bonds' : x.instrument.id;
-    byIns.set(k, (byIns.get(k) || 0) + x.value);
-  }
-  if (cash > 0) byIns.set('Cash', cash);
-  const entries = [...byIns.entries()].sort((a, b) => b[1] - a[1]);
-  const sum = entries.reduce((s, e) => s + e[1], 0);
   chart('c-alloc', {
     type: 'doughnut',
     data: {
-      labels: entries.map(([k, v]) => `${k}  ${(v / sum * 100).toFixed(1)}%`),
-      datasets: [{ data: entries.map((e) => Math.round(e[1])), backgroundColor: entries.map((_, i) => PALETTE[i % PALETTE.length]), borderColor: css('--card'), borderWidth: 2 }],
+      labels: entries.map(([k]) => k),
+      datasets: [{ data: entries.map((e) => Math.round(e[1])), backgroundColor: entries.map(([k]) => colorOf[k]), borderColor: css('--card'), borderWidth: 3, hoverOffset: 4 }],
     },
     options: {
       maintainAspectRatio: false,
-      cutout: '62%',
-      plugins: {
-        legend: { position: window.innerWidth < 500 ? 'bottom' : 'right', labels: { boxWidth: 12, boxHeight: 12, padding: 10 } },
-        tooltip: { callbacks: { label: (c) => ` ${zl(c.raw)}` } },
-      },
+      cutout: '70%',
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: (c) => ` ${zl(c.raw)}` } } },
     },
   });
 }
@@ -359,6 +392,8 @@ function renderGoal(el) {
             data: series(x.mm),
             borderColor: x.mm === m ? css('--accent') : PALETTE[(i + 1) % PALETTE.length],
             borderWidth: x.mm === m ? 3 : 1.5,
+            fill: x.mm === m ? 'origin' : false,
+            backgroundColor: fade(css('--accent')),
             pointRadius: 0,
             tension: 0.2,
           })),
@@ -461,7 +496,7 @@ function renderHistory(el) {
     data: {
       labels: snaps.map((s) => niceDate(s.date)),
       datasets: [
-        { label: 'Total value', data: snaps.map((s) => +s.total_pln), borderColor: css('--accent'), backgroundColor: css('--accent-soft'), fill: true, borderWidth: 2.5, pointRadius: 0, tension: 0.2 },
+        { label: 'Total value', data: snaps.map((s) => +s.total_pln), borderColor: css('--accent'), backgroundColor: fade(css('--accent')), fill: true, borderWidth: 2.5, pointRadius: 0, tension: 0.25 },
         { label: 'Amount invested', data: snaps.map((s) => +s.cost_pln), borderColor: css('--text-2'), borderDash: [5, 4], borderWidth: 1.5, pointRadius: 0 },
         { label: 'Home goal money', data: snaps.map((s) => +s.goal_pln), borderColor: css('--up'), borderWidth: 1.5, pointRadius: 0, tension: 0.2, hidden: true },
       ],
@@ -507,13 +542,15 @@ function renderActivity(el) {
     const head = month !== lastMonth ? `<div class="month-head">${month}</div>` : '';
     lastMonth = month;
     const total = t.units * t.price_pln + (t.type === 'sell' ? -1 : 1) * Number(t.fee_pln || 0);
-    return `${head}<div class="row">
-      <div class="left">
-        <b>${esc(t.instrument_id)}</b><span class="chip ${t.type}">${t.type === 'sell' ? 'Sell' : 'Buy'}</span>
+    const sell = t.type === 'sell';
+    return `${head}<div class="pos">
+      <div class="avatar" style="--c:${sell ? css('--down') : css('--up')}">${sell ? '↑' : '↓'}</div>
+      <div class="pos-main">
+        <div class="pos-title"><b>${esc(t.instrument_id)}</b><span class="chip ${t.type}">${sell ? 'Sold' : 'Bought'}</span></div>
         <div class="sub">${niceDate(t.date)} · ${esc(accById[t.account_id]?.name ?? t.account_id)}</div>
         <div class="sub">${fmtN.format(t.units)} × ${zl2(t.price_pln)}${t.note ? ` · ${esc(t.note)}` : ''}</div>
       </div>
-      <div class="right"><b>${zl2(total)}</b><div><button class="danger-link small" data-del="${t.id}">Delete</button></div></div>
+      <div class="pos-num"><b>${zl2(total)}</b><button class="danger-link" data-del="${t.id}">Delete</button></div>
     </div>`;
   }).join('');
 
@@ -521,7 +558,7 @@ function renderActivity(el) {
   const bonds = data.instruments.filter((i) => i.kind === 'bond');
 
   el.innerHTML = `
-    <button class="primary" id="add-tx">+ Add purchase or sale</button>
+    <button class="primary add-btn" id="add-tx"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Add purchase or sale</button>
     <div class="card"><h2>Transactions</h2><div class="rows">${txRows || '<p class="muted">No transactions yet.</p>'}</div></div>
     <div class="card">
       <h2>ETFs <button class="link small" id="add-etf">+ Add ETF</button></h2>
