@@ -96,7 +96,9 @@ async function enterApp() {
   try {
     await load();
   } catch (e) {
-    $('#loading').innerHTML = `<div class="card"><p class="error">Could not load data: ${esc(e.message)}</p></div>`;
+    $('#loading').innerHTML = `<div class="card"><p class="error">Could not load data: ${esc(e.message)}</p>
+      <p><button class="primary" onclick="location.reload()">Try again</button> <button class="ghost" id="err-out">Log out</button></p></div>`;
+    $('#err-out').addEventListener('click', async () => { await db.auth.signOut(); location.reload(); });
     return;
   }
   $('#loading').hidden = true;
@@ -186,6 +188,7 @@ function renderOverview(el) {
     </div>
     ${p.warnings.map((w) => `<div class="warn">⚠️ <b>${esc(w.instrument.id)}</b> started interest year ${w.year}. Enter the new rate so the value is exact (using last year's rate for now).
       <div><button class="ghost small-btn" data-rates="${esc(w.instrument.id)}">Enter rate</button></div></div>`).join('')}
+    ${p.oversold.map((o) => `<div class="warn">⚠️ The sale of ${fmtN.format(o.tx.units)} <b>${esc(o.tx.instrument_id)}</b> on ${niceDate(o.tx.date)} is more than you held then (${fmtN.format(o.held)}). Check its date in Activity.</div>`).join('')}
     <div class="card"><h2>Allocation</h2><div class="chart-wrap pie"><canvas id="c-alloc"></canvas></div></div>
     ${groups.map(([kind, title]) => {
       const rows = p.positions.filter((x) => x.instrument.kind === kind).sort((a, b) => b.value - a.value);
@@ -258,7 +261,7 @@ function renderGoal(el) {
     <div class="card">
       <div class="toolbar"><div class="label">Down payment goal</div><button class="link small" id="edit-goal">Edit</button></div>
       <div class="big">${zl(b.target)}</div>
-      <div class="muted small">${fmt0.format(s.down_payment_pct)}% of a ${zl(s.home_price)} home</div>
+      <div class="muted small">${fmtN.format(s.down_payment_pct)}% of a ${zl(s.home_price)} home</div>
       <div class="progress"><div style="width:${(progress * 100).toFixed(1)}%"></div></div>
       <div class="toolbar small"><span><b>${zl(b.start)}</b> saved (${(progress * 100).toFixed(0)}%)</span><span class="muted">${zl(Math.max(0, b.target - b.start))} to go</span></div>
       <div class="small muted" style="margin-top:6px">Investments without IKE ${zl(b.invested)} + cash ${zl(b.cash)}</div>
@@ -400,6 +403,7 @@ function renderGoal(el) {
       if (res.months !== null && res.months <= months) hi = mid; else lo = mid;
     }
     const need = Math.ceil(hi / 50) * 50;
+    if (hi >= 499999) { out.textContent = 'That date is too close to reach with monthly savings.'; return; }
     out.innerHTML = `To have ${zl(b.target)}${afterTax ? ' after tax' : ''} by <b>${monthYear(new Date(y, mo - 1, 1))}</b>, invest about <b>${zl(need)} per month</b> (at ${r}% a year).`;
   }
 
@@ -480,7 +484,10 @@ function renderHistory(el) {
 function historySummary(snaps) {
   const a = snaps[0], z = snaps.at(-1);
   const dv = z.total_pln - a.total_pln;
-  const dc = z.cost_pln - a.cost_pln;
+  // Money moved in (buys) or out (sales) between the two snapshots.
+  const dc = data.transactions
+    .filter((t) => t.date > a.date && t.date <= z.date)
+    .reduce((s, t) => s + (t.type === 'sell' ? -(t.units * t.price_pln - (t.fee_pln || 0)) : t.units * t.price_pln + Number(t.fee_pln || 0)), 0);
   const growth = dv - dc;
   return `<div class="card"><h2>In this period</h2>
     <div class="rows">
@@ -537,6 +544,12 @@ function renderActivity(el) {
   el.querySelectorAll('[data-rates]').forEach((b) => b.addEventListener('click', () => editBondForm(b.dataset.rates)));
   el.querySelectorAll('[data-del]').forEach((b) => b.addEventListener('click', async () => {
     const t = data.transactions.find((x) => String(x.id) === b.dataset.del);
+    const rest = data.transactions.filter((x) => x.id !== t.id);
+    const before = data.portfolio.oversold.length;
+    if (computePortfolio({ ...data, transactions: rest }).oversold.length > before) {
+      alert(`You can't delete this purchase: a later sale of ${t.instrument_id} depends on it. Delete that sale first.`);
+      return;
+    }
     if (!confirm(`Delete this ${t.type} of ${fmtN.format(t.units)} ${t.instrument_id} from ${niceDate(t.date)}?`)) return;
     try {
       await must(db.from('transactions').delete().eq('id', t.id));
@@ -551,11 +564,11 @@ function openForm(title, fields, onSubmit, saveLabel = 'Save') {
   dlg.innerHTML = `<form method="dialog" class="form">
     <h2>${esc(title)}</h2>${fields}
     <p class="error" hidden></p>
-    <div class="actions"><button value="cancel" formnovalidate class="ghost">Cancel</button><button value="ok" class="primary">${esc(saveLabel)}</button></div>
+    <div class="actions"><button type="button" class="ghost" data-cancel>Cancel</button><button type="submit" class="primary">${esc(saveLabel)}</button></div>
   </form>`;
   const form = $('form', dlg);
+  $('[data-cancel]', form).addEventListener('click', () => dlg.close());
   form.addEventListener('submit', async (e) => {
-    if (e.submitter?.value === 'cancel') return;
     e.preventDefault();
     const err = $('.error', form);
     const btn = $('button.primary', form);
@@ -599,14 +612,17 @@ function txForm() {
     const units = parseNum(f.units);
     const total = parseNum(f.total);
     if (!(units > 0) || !(total >= 0)) throw new Error('Enter the number of units and the total amount.');
-    if (f.type === 'sell') {
-      const pos = data.portfolio.positions.find((p) => p.instrument.id === f.instrument_id && p.account?.id === f.account_id);
-      if (!pos || pos.units + 1e-9 < units) throw new Error(`You only have ${fmtN.format(pos?.units ?? 0)} units of ${f.instrument_id} in that account.`);
-    }
-    await must(db.from('transactions').insert({
+    const tx = {
       date: f.date, account_id: f.account_id, instrument_id: f.instrument_id, type: f.type,
       units, price_pln: total / units, fee_pln: 0, note: f.note || null,
-    }));
+    };
+    if (f.type === 'sell') {
+      // Replay history with this sale included, so a sale dated before the purchase is caught too.
+      const check = computePortfolio({ ...data, transactions: [...data.transactions, { ...tx, id: Infinity }] });
+      const bad = check.oversold.find((o) => o.tx.id === Infinity);
+      if (bad) throw new Error(`On ${niceDate(f.date)} you had only ${fmtN.format(bad.held)} units of ${f.instrument_id} in that account.`);
+    }
+    await must(db.from('transactions').insert(tx));
     store.set('lastAccount', f.account_id);
     if (f.from_cash && f.type === 'buy') {
       await must(db.from('settings').update({ cash_pln: Math.max(0, cash - total) }).eq('id', 1));
@@ -651,6 +667,7 @@ function etfForm() {
     const id = f.id.trim().toUpperCase();
     if (data.instruments.some((i) => i.id === id)) throw new Error(`${id} already exists.`);
     const price = f.price ? parseNum(f.price) : null;
+    if (price !== null && !(price > 0)) throw new Error('The price must be a number, e.g. 512,40');
     await must(db.from('instruments').insert({
       id, name: f.name.trim(), kind: 'etf', yahoo_symbol: f.yahoo_symbol.trim().toUpperCase(),
       price_pln: price, prev_price_pln: price, price_date: price ? todayISO() : null,
@@ -670,9 +687,12 @@ function bondForm() {
   async (f) => {
     const id = f.id.trim().toUpperCase();
     if (data.instruments.some((i) => i.id === id)) throw new Error(`${id} already exists.`);
+    const first = parseNum(f.first.replace('%', ''));
+    const margin = parseNum(f.margin.replace('%', ''));
+    if (!Number.isFinite(first) || !Number.isFinite(margin)) throw new Error('Rates must be numbers, e.g. 6.00 and 2.00');
     await must(db.from('instruments').insert({
       id, name: `${id.slice(0, 3)} bonds, series ${id}`, kind: 'bond', currency: 'PLN',
-      bond_margin: parseNum(f.margin), bond_rates: [parseNum(f.first)],
+      bond_margin: margin, bond_rates: [first],
     }));
   });
 }

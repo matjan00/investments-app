@@ -5,7 +5,8 @@ export const BELKA_TAX = 0.19;
 const DAY = 86400000;
 
 export function toDate(d) {
-  if (d instanceof Date) return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  // A Date means "that day on the user's clock"; strings are plain YYYY-MM-DD dates.
+  if (d instanceof Date) return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
   const [y, m, day] = String(d).slice(0, 10).split('-').map(Number);
   return new Date(Date.UTC(y, m - 1, day));
 }
@@ -72,6 +73,7 @@ export function computePortfolio({ accounts, instruments, transactions }, asOf =
   const map = new Map();
   const sorted = [...transactions].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.id - b.id));
   const warnings = [];
+  const oversold = []; // sales of more units than were held on that date
 
   for (const t of sorted) {
     const ins = insById[t.instrument_id];
@@ -86,6 +88,7 @@ export function computePortfolio({ accounts, instruments, transactions }, asOf =
     const price = Number(t.price_pln);
     const fee = Number(t.fee_pln || 0);
     if (t.type === 'sell') {
+      if (units > p.units + 1e-9) oversold.push({ tx: t, held: p.units });
       if (p.units <= 0) continue;
       const share = Math.min(1, units / p.units);
       const costSold = p.cost * share;
@@ -120,7 +123,7 @@ export function computePortfolio({ accounts, instruments, transactions }, asOf =
     if (ins.kind === 'bond') {
       value = 0;
       prevValue = 0;
-      const yesterday = new Date(toDate(asOf).getTime() - DAY);
+      const yesterday = new Date(toDate(asOf).getTime() - DAY).toISOString().slice(0, 10);
       for (const lot of p.lots) {
         const v = bondUnitValue(lot.date, ins.bond_rates, asOf);
         value += lot.units * v.value;
@@ -157,6 +160,7 @@ export function computePortfolio({ accounts, instruments, transactions }, asOf =
     goalValue: sum(goalPositions, (p) => p.value),
     goalCost: sum(goalPositions, (p) => p.cost),
     warnings: uniqueWarnings,
+    oversold,
   };
 }
 

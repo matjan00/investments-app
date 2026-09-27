@@ -41,6 +41,18 @@ test('average cost after buys and a partial sell', () => {
   assert.equal(pos.dayChange, 150);
 });
 
+test('a sale dated before the purchase is reported', () => {
+  const p = computePortfolio({
+    accounts, instruments,
+    transactions: [
+      { id: 1, date: '2026-01-10', account_id: 'a', instrument_id: 'X', type: 'buy', units: 10, price_pln: 100 },
+      { id: 2, date: '2025-12-01', account_id: 'a', instrument_id: 'X', type: 'sell', units: 5, price_pln: 100 },
+    ],
+  });
+  assert.equal(p.oversold.length, 1);
+  assert.equal(p.oversold[0].held, 0);
+});
+
 test('IKE is excluded from the goal', () => {
   const p = computePortfolio({
     accounts, instruments,

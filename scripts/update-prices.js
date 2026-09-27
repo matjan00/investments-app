@@ -16,19 +16,20 @@ async function yahoo(symbol) {
   if (!res.ok) throw new Error(`${symbol}: HTTP ${res.status}`);
   const r = (await res.json()).chart?.result?.[0];
   if (!r) throw new Error(`${symbol}: no data`);
-  const closes = (r.indicators?.quote?.[0]?.close || []).filter((x) => x != null);
-  const price = r.meta.regularMarketPrice ?? closes.at(-1);
-  // Previous day's close: the last close that differs from today's entry.
-  const prev = closes.length >= 2 ? closes.at(-2) : price;
+  const day = (sec) => new Date(sec * 1000).toISOString().slice(0, 10);
+  const closes = r.indicators?.quote?.[0]?.close || [];
+  const bars = (r.timestamp || []).map((ts, i) => ({ date: day(ts), close: closes[i] })).filter((b) => b.close != null);
+  const price = r.meta.regularMarketPrice ?? bars.at(-1)?.close;
+  if (!Number.isFinite(price) || price <= 0) throw new Error(`${symbol}: no valid price`);
+  const date = day(r.meta.regularMarketTime);
+  // Previous close = last trading day before the day of the latest price.
+  const prev = bars.filter((b) => b.date < date).at(-1)?.close ?? price;
   let currency = r.meta.currency;
   let factor = 1;
   if (currency === 'GBp' || currency === 'GBX') { currency = 'GBP'; factor = 0.01; }
-  return {
-    price: price * factor,
-    prev: prev * factor,
-    currency,
-    date: new Date(r.meta.regularMarketTime * 1000).toISOString().slice(0, 10),
-  };
+  // Exchange closed today (holiday): nothing changed today.
+  const prevClose = date < todayISO() ? price : prev;
+  return { price: price * factor, prev: prevClose * factor, currency, date };
 }
 
 const fxCache = { PLN: 1 };
