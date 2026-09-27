@@ -53,8 +53,15 @@ const fade = (hex) => ({ chart: c }) => {
   return g;
 };
 
-function chart(id, config) {
-  charts[id]?.destroy();
+function chart(id, config, { live = false } = {}) {
+  // Live charts (moved by sliders) update in place without animation instead of being rebuilt.
+  const existing = charts[id];
+  if (live && existing && existing.canvas === document.getElementById(id)) {
+    existing.data = config.data;
+    existing.update('none');
+    return;
+  }
+  existing?.destroy();
   const el = document.getElementById(id);
   if (!el) return;
   Chart.defaults.color = css('--text-2');
@@ -355,17 +362,15 @@ function renderGoal(el) {
     $('#g-dur', el).textContent = res.months ? `in ${duration(res.months)}` : '';
     if (res.months != null) {
       const put = b.start + m * res.months;
-      $('#g-sub', el).innerHTML = `<span>You add <b>${zl(m * res.months)}</b></span><span>Growth <b>${zl(res.series.at(-1) - put)}</b></span>
-        <span>${afterTax ? 'Before tax' : 'After tax'}: <b>${dateText(other.months)}</b></span>`;
+      $('#g-sub', el).innerHTML = `<div><span>You add</span><b>${zl(m * res.months)}</b></div><div><span>Growth</span><b>${zl(res.series.at(-1) - put)}</b></div>
+        <div><span>${afterTax ? 'Before tax' : 'After tax'}</span><b>${dateText(other.months)}</b></div>`;
     } else {
       $('#g-sub', el).innerHTML = '';
     }
 
-    // Scenario table: monthly amount × return
+    // Scenario table: fixed 3×3 grid so it never changes size while a slider moves.
     const rets = [4, 4.5, 5];
-    if (!rets.includes(r)) rets.push(r);
-    rets.sort((a, c) => a - c);
-    const ms = [...new Set([4000, 5000, 6000, m])].sort((a, c) => a - c);
+    const ms = [4000, 5000, 6000];
     $('#g-scen-note', el).textContent = afterTax ? 'after tax' : 'before tax';
     $('#g-table', el).innerHTML = `<tr><th>Monthly</th>${rets.map((x) => `<th>${x}% / yr</th>`).join('')}</tr>` +
       ms.map((mm) => `<tr><td><b>${zl(mm)}</b></td>${rets.map((rr) => {
@@ -412,7 +417,7 @@ function renderGoal(el) {
           tooltip: { callbacks: { label: (c) => ` ${c.dataset.label}: ${zl(c.raw)}` } },
         },
       },
-    });
+    }, { live: true });
 
     updateNeed();
     if (save) saveSettingsSoon({ monthly_pln: m, expected_return: r });
