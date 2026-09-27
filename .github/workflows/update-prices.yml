@@ -1,0 +1,31 @@
+name: Update prices
+
+on:
+  schedule:
+    - cron: '30 17 * * 1-5'   # Mon–Fri, 19:30 Polish summer time / 18:30 winter time
+  workflow_dispatch:           # adds a "Run workflow" button on GitHub
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: node scripts/update-prices.js
+        env:
+          SUPABASE_URL: https://xohxjlijprjbxzwkupnt.supabase.co
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+      # GitHub switches off scheduled jobs after 60 days without changes to the repo.
+      # Re-enabling it on every run keeps it going forever.
+      - name: Keep schedule alive
+        if: always()
+        run: gh api -X PUT "repos/${{ github.repository }}/actions/workflows/update-prices.yml/enable"
+        env:
+          GH_TOKEN: ${{ github.token }}

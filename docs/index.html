@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Our Investments</title>
+  <meta name="theme-color" content="#f4f5f7" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0e1116" media="(prefers-color-scheme: dark)">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon-180.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Investments">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <div id="loading" class="center-screen"><div class="spinner"></div></div>
+
+  <div id="login" class="center-screen" hidden>
+    <form id="login-form" class="card login-card">
+      <img src="icon.svg" alt="" width="56" height="56">
+      <h1>Our Investments</h1>
+      <label>Email<input type="email" name="email" autocomplete="username" required></label>
+      <label>Password<input type="password" name="password" autocomplete="current-password" required></label>
+      <p class="error" hidden></p>
+      <button class="primary" type="submit">Log in</button>
+    </form>
+  </div>
+
+  <div id="app" hidden>
+    <header class="top">
+      <h1 id="page-title">Overview</h1>
+      <button id="refresh" class="icon-btn" title="Reload data" aria-label="Reload data">
+        <svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.34-5.66M20 4v5h-5"/></svg>
+      </button>
+    </header>
+    <main>
+      <section id="tab-overview" class="tab"></section>
+      <section id="tab-goal" class="tab" hidden></section>
+      <section id="tab-history" class="tab" hidden></section>
+      <section id="tab-activity" class="tab" hidden></section>
+    </main>
+    <nav class="tabs">
+      <button data-tab="overview"><svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>Overview</button>
+      <button data-tab="goal"><svg viewBox="0 0 24 24"><path d="M3 11l9-7 9 7M5 10v10h14V10M10 20v-6h4v6"/></svg>Home goal</button>
+      <button data-tab="history"><svg viewBox="0 0 24 24"><path d="M3 17l5-5 4 4 8-9M15 7h5v5"/></svg>History</button>
+      <button data-tab="activity"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Activity</button>
+    </nav>
+  </div>
+
+  <dialog id="dlg"></dialog>
+</body>
+</html>

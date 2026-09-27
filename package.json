@@ -1,0 +1,8 @@
+{
+  "name": "investments-app",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.117.2"
+  }
+}
