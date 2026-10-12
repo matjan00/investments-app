@@ -40,7 +40,7 @@ create table if not exists snapshots (
   date date primary key,
   total_pln numeric not null,
   cost_pln numeric not null,
-  goal_pln numeric not null,       -- accounts that count for the goal, plus cash
+  goal_pln numeric not null,       -- accounts that count for the goal
   goal_cost_pln numeric not null
 );
 
@@ -48,7 +48,7 @@ create table if not exists settings (
   id int primary key default 1 check (id = 1),
   home_price numeric not null default 1000000,
   down_payment_pct numeric not null default 30,
-  cash_pln numeric not null default 0,
+  cash_pln numeric not null default 0,  -- no longer used by the app
   monthly_pln numeric not null default 5000,
   expected_return numeric not null default 4.5
 );

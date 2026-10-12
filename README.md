@@ -21,7 +21,7 @@ Nobody can see the data without logging in: every table is protected by Row Leve
 
 ## Everyday use
 
-**Bought something?** Activity → *Add purchase or sale*. Enter the units and the total amount in zł that left your account (XTB's transaction history shows it). If it came out of the cash savings, leave the tick box on and the cash amount goes down automatically.
+**Bought something?** Activity → *Add purchase or sale*. Enter the units and the total amount in zł that left your account (XTB's transaction history shows it).
 
 **New ETF?** Activity → *Add ETF*. Find its symbol on finance.yahoo.com (e.g. `VWCE.DE`; `.DE` Xetra, `.WA` Warsaw, `.L` London). The price appears after the next evening update.
 
@@ -29,7 +29,7 @@ Nobody can see the data without logging in: every table is protected by Row Leve
 
 **Once a year per bond series:** when a series passes its anniversary, the app shows a yellow notice. Tap *Enter rate* and add the new year's rate (margin + inflation, shown in your bond account). Until then it uses last year's rate.
 
-**Cash / goal settings:** Home goal → *Edit* (home price, down-payment %, cash waiting to invest).
+**Goal settings:** Home goal → *Edit* (home price, down-payment %).
 
 ## If something goes wrong
 

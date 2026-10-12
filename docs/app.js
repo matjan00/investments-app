@@ -80,7 +80,7 @@ async function load() {
   ]);
   data = {
     accounts, instruments, transactions, snapshots,
-    settings: settings[0] || { home_price: 1000000, down_payment_pct: 30, cash_pln: 0, monthly_pln: 5000, expected_return: 4.5 },
+    settings: settings[0] || { home_price: 1000000, down_payment_pct: 30, monthly_pln: 5000, expected_return: 4.5 },
   };
   data.portfolio = computePortfolio(data);
   loadedAt = Date.now();
@@ -271,13 +271,10 @@ function renderOverview(el) {
 function goalBase() {
   const s = data.settings;
   const p = data.portfolio;
-  const cash = Number(s.cash_pln || 0);
   return {
     target: Number(s.home_price) * Number(s.down_payment_pct) / 100,
-    start: p.goalValue + cash,
-    startCost: p.goalCost + cash,
-    invested: p.goalValue,
-    cash,
+    start: p.goalValue,
+    startCost: p.goalCost,
   };
 }
 
@@ -301,7 +298,6 @@ function renderGoal(el) {
       <div class="muted small">${fmtN.format(s.down_payment_pct)}% of a ${zl(s.home_price)} home</div>
       <div class="progress"><div style="width:${(progress * 100).toFixed(1)}%"></div></div>
       <div class="toolbar small"><span><b>${zl(b.start)}</b> saved (${(progress * 100).toFixed(0)}%)</span><span class="muted">${zl(Math.max(0, b.target - b.start))} to go</span></div>
-      <div class="small muted" style="margin-top:6px">Investments ${zl(b.invested)} + cash ${zl(b.cash)}</div>
     </div>
 
     <div class="card">
@@ -457,11 +453,9 @@ function editGoalForm() {
   const s = data.settings;
   openForm('Home goal', `
     <label>Home price (zł)<input name="home_price" inputmode="decimal" value="${s.home_price}" required></label>
-    <label>Down payment (%)<input name="down_payment_pct" inputmode="decimal" value="${s.down_payment_pct}" required></label>
-    <label>Cash waiting to invest (zł)<input name="cash_pln" inputmode="decimal" value="${s.cash_pln}" required>
-      <small>Money in the bank set aside for the home. It counts toward the goal.</small></label>`,
+    <label>Down payment (%)<input name="down_payment_pct" inputmode="decimal" value="${s.down_payment_pct}" required></label>`,
   async (f) => {
-    const patch = { home_price: parseNum(f.home_price), down_payment_pct: parseNum(f.down_payment_pct), cash_pln: parseNum(f.cash_pln) };
+    const patch = { home_price: parseNum(f.home_price), down_payment_pct: parseNum(f.down_payment_pct) };
     if (Object.values(patch).some((v) => !Number.isFinite(v) || v < 0)) throw new Error('Please enter valid numbers.');
     await must(db.from('settings').update(patch).eq('id', 1));
   });
@@ -630,7 +624,6 @@ function openForm(title, fields, onSubmit, saveLabel = 'Save') {
 
 function txForm() {
   const lastAcc = store.get('lastAccount', 'poboczne');
-  const cash = Number(data.settings.cash_pln || 0);
   const form = openForm('Add transaction', `
     <div class="seg"><label><input type="radio" name="type" value="buy" checked>Buy</label><label><input type="radio" name="type" value="sell">Sell</label></div>
     <label>Investment<select name="instrument_id" required>
@@ -645,7 +638,6 @@ function txForm() {
       <label><span id="tx-total-label">Total paid (zł)</span><input name="total" inputmode="decimal" placeholder="incl. fees" required></label>
     </div>
     <p class="hint" id="tx-hint">Use the total in zł that left your account (XTB shows it in the transaction history).</p>
-    ${cash > 0 ? `<label class="check"><input type="checkbox" name="from_cash" checked> Paid from the ${zl(cash)} cash savings (reduces it)</label>` : ''}
     <label>Note (optional)<input name="note" maxlength="120"></label>`,
   async (f) => {
     const units = parseNum(f.units);
@@ -663,9 +655,6 @@ function txForm() {
     }
     await must(db.from('transactions').insert(tx));
     store.set('lastAccount', f.account_id);
-    if (f.from_cash && f.type === 'buy') {
-      await must(db.from('settings').update({ cash_pln: Math.max(0, cash - total) }).eq('id', 1));
-    }
   });
 
   const hint = $('#tx-hint', form);
@@ -674,8 +663,6 @@ function txForm() {
     const isBond = ins?.kind === 'bond';
     const sell = form.querySelector('input[name=type]:checked').value === 'sell';
     $('#tx-total-label', form).textContent = sell ? 'Total received (zł)' : 'Total paid (zł)';
-    const cashBox = form.querySelector('input[name=from_cash]');
-    if (cashBox) cashBox.closest('label').hidden = sell;
     const u = parseNum(form.units.value), t = parseNum(form.total.value);
     if (u > 0 && t > 0) hint.textContent = `= ${zl2(t / u)} per unit`;
     else hint.textContent = isBond ? 'Bonds cost 100 zł each (or 99.90 zł when rolled over).' : 'Use the total in zł that left your account (XTB shows it in the transaction history).';

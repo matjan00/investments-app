@@ -68,19 +68,17 @@ for (const ins of instruments) {
   }
 }
 
-const [accounts, transactions, settingsRows] = await Promise.all([
+const [accounts, transactions] = await Promise.all([
   must(db.from('accounts').select('*')),
   must(db.from('transactions').select('*')),
-  must(db.from('settings').select('*')),
 ]);
-const cash = Number(settingsRows[0]?.cash_pln || 0);
 const p = computePortfolio({ accounts, instruments, transactions });
 const snapshot = {
   date: todayISO(),
   total_pln: Math.round(p.total * 100) / 100,
   cost_pln: Math.round(p.cost * 100) / 100,
-  goal_pln: Math.round((p.goalValue + cash) * 100) / 100,
-  goal_cost_pln: Math.round((p.goalCost + cash) * 100) / 100,
+  goal_pln: Math.round(p.goalValue * 100) / 100,
+  goal_cost_pln: Math.round(p.goalCost * 100) / 100,
 };
 await must(db.from('snapshots').upsert(snapshot));
 console.log('Snapshot saved:', snapshot);
