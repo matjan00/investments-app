@@ -21,20 +21,24 @@ Nobody can see the data without logging in: every table is protected by Row Leve
 
 ## Everyday use
 
-**Bought something?** Activity → *Add purchase or sale*. Enter the units and the total amount in zł that left your account (XTB's transaction history shows it).
+The app is in Polish. Button names below are as they appear in the app.
 
-**New ETF?** Activity → *Add ETF*. Find its symbol on finance.yahoo.com (e.g. `VWCE.DE`; `.DE` Xetra, `.WA` Warsaw, `.L` London). The price appears after the next evening update.
+**Bought something?** Przegląd → *Dodaj zakup lub sprzedaż* (or Transakcje → *+ Dodaj*). Enter the units and the total amount in zł that left your account (XTB's transaction history shows it).
 
-**New bonds?** Activity → *Add bond series* (e.g. `EDO1036`, year-1 rate and margin from obligacjeskarbowe.pl), then add the purchase.
+**Made a mistake?** Transakcje → tap the transaction → *Edytuj* or *Usuń*. After deleting, *Cofnij* in the bar at the bottom brings it back for a few seconds.
 
-**Once a year per bond series:** when a series passes its anniversary, the app shows a yellow notice. Tap *Enter rate* and add the new year's rate (margin + inflation, shown in your bond account). Until then it uses last year's rate.
+**New ETF?** Transakcje → *+ Dodaj ETF*. Find its symbol on finance.yahoo.com (e.g. `VWCE.DE`; `.DE` Xetra, `.WA` Warsaw, `.L` London). The price appears after the next evening update.
 
-**Goal settings:** Home goal → *Edit* (home price, down-payment %).
+**New bonds?** Transakcje → *+ Dodaj serię* (e.g. `EDO1036`, year-1 rate and margin from obligacjeskarbowe.pl), then add the purchase.
+
+**Once a year per bond series:** when a series passes its anniversary, the app shows a yellow notice. Tap *Wpisz oprocentowanie*; the empty year is highlighted. Enter the new year's rate (margin + inflation, shown in your bond account). Until then it uses last year's rate.
+
+**Goal settings:** Mieszkanie → *Zmień cel* (home price, down-payment %).
 
 ## If something goes wrong
 
-- **Prices stopped updating:** GitHub → this repository → *Actions* → *Update prices*. A red ✗ means it failed; open it to see which ETF failed. *Run workflow* runs it immediately. The Yahoo symbol may need changing (Activity → ETFs).
-- **App says "Could not load data":** Supabase pauses free projects after a week without use. The daily job normally prevents that; if it happens, open supabase.com → the project → *Restore*.
+- **Prices stopped updating:** GitHub → this repository → *Actions* → *Update prices*. A red ✗ means it failed; open it to see which ETF failed. *Run workflow* runs it immediately. The Yahoo symbol may need changing (Transakcje → ETF-y).
+- **App says "Nie udało się wczytać danych":** Supabase pauses free projects after a week without use. The daily job normally prevents that; if it happens, open supabase.com → the project → *Restore*.
 - **Forgot a password:** Supabase → Authentication → Users → the user → *Send password recovery* (or set a new one).
 
 ## For developers

@@ -1,3 +1,6 @@
 node_modules/
 # Personal holdings — stays on this computer only
 supabase/seed.sql
+
+# Design tooling output (local only)
+.impeccable/
