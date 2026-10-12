@@ -205,7 +205,6 @@ function goalTeaser() {
 
 function renderOverview(el) {
   const p = data.portfolio;
-  const cash = Number(data.settings.cash_pln || 0);
   const gain = p.total - p.cost;
   const priceDates = data.instruments.filter((i) => i.kind === 'etf' && i.price_date).map((i) => i.price_date).sort();
   const lastPrice = priceDates.at(-1);
@@ -214,7 +213,6 @@ function renderOverview(el) {
   // Allocation: combine the same ETF across accounts; colours are shared with the holdings list.
   const byIns = new Map();
   for (const x of p.positions) byIns.set(allocKey(x.instrument), (byIns.get(allocKey(x.instrument)) || 0) + x.value);
-  if (cash > 0) byIns.set('Cash', cash);
   const entries = [...byIns.entries()].sort((a, b) => b[1] - a[1]);
   const sum = entries.reduce((s, e) => s + e[1], 0);
   const colorOf = Object.fromEntries(entries.map(([k], i) => [k, PALETTE[i % PALETTE.length]]));
@@ -227,7 +225,6 @@ function renderOverview(el) {
       <div class="stats">
         <div><span>Today</span><b class="${cls(p.dayChange)}">${szl(p.dayChange)}</b></div>
         <div><span>Invested</span><b>${zl(p.cost)}</b></div>
-        <div><span>Cash</span><b>${zl(cash)}</b></div>
       </div>
       <div class="hero-foot">${lastPrice ? `Prices from ${niceDate(lastPrice)} · auto-updated every weekday` : 'Prices appear after the first daily update'}</div>
     </div>
