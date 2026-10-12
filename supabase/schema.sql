@@ -3,7 +3,7 @@
 create table if not exists accounts (
   id text primary key,
   name text not null,
-  counts_for_goal boolean not null default true,  -- false for IKE (not used for the down payment)
+  counts_for_goal boolean not null default true,  -- false = not used for the down payment
   sort int not null default 0
 );
 
@@ -40,7 +40,7 @@ create table if not exists snapshots (
   date date primary key,
   total_pln numeric not null,
   cost_pln numeric not null,
-  goal_pln numeric not null,       -- everything except IKE, plus cash
+  goal_pln numeric not null,       -- accounts that count for the goal, plus cash
   goal_cost_pln numeric not null
 );
 

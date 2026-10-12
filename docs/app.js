@@ -250,7 +250,7 @@ function renderOverview(el) {
       return `<div class="card"><h2>${title} <span class="muted">${zl(v)} · <span class="${cls(g)}">${szl(g)}</span></span></h2>
         <div class="rows">${rows.map((x) => positionRow(x, colorOf[allocKey(x.instrument)])).join('')}</div></div>`;
     }).join('')}
-    <p class="footnote">IKE is shown here but not counted toward the home goal.<br><button class="link" id="signout">Log out</button></p>`;
+    <p class="footnote"><button class="link" id="signout">Log out</button></p>`;
 
   el.querySelectorAll('[data-rates]').forEach((b) => b.addEventListener('click', () => editBondForm(b.dataset.rates)));
   $('[data-go]', el).addEventListener('click', () => { showTab('goal'); window.scrollTo(0, 0); });
@@ -304,7 +304,7 @@ function renderGoal(el) {
       <div class="muted small">${fmtN.format(s.down_payment_pct)}% of a ${zl(s.home_price)} home</div>
       <div class="progress"><div style="width:${(progress * 100).toFixed(1)}%"></div></div>
       <div class="toolbar small"><span><b>${zl(b.start)}</b> saved (${(progress * 100).toFixed(0)}%)</span><span class="muted">${zl(Math.max(0, b.target - b.start))} to go</span></div>
-      <div class="small muted" style="margin-top:6px">Investments without IKE ${zl(b.invested)} + cash ${zl(b.cash)}</div>
+      <div class="small muted" style="margin-top:6px">Investments ${zl(b.invested)} + cash ${zl(b.cash)}</div>
     </div>
 
     <div class="card">
