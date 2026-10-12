@@ -742,7 +742,7 @@ async function restoreTx(t) {
 }
 
 // ---------- forms ----------
-function openForm(title, fields, onSubmit, saveLabel = 'Zapisz', done = 'Zapisano') {
+function openForm(title, fields, onSubmit, saveLabel = 'Zapisz', done = 'Zapisano', after = null) {
   const dlg = $('#dlg');
   dlg.innerHTML = `<form method="dialog" class="form">
     <h2>${esc(title)}</h2>${fields}
@@ -758,10 +758,11 @@ function openForm(title, fields, onSubmit, saveLabel = 'Zapisz', done = 'Zapisan
     err.hidden = true;
     btn.disabled = true;
     try {
-      await onSubmit(Object.fromEntries(new FormData(form)), form);
+      const result = await onSubmit(Object.fromEntries(new FormData(form)), form);
       dlg.close();
       await refresh();
       if (done) toast(done);
+      if (after) after(result);
     } catch (ex) {
       err.textContent = friendly(ex);
       err.hidden = false;
@@ -775,12 +776,12 @@ function openForm(title, fields, onSubmit, saveLabel = 'Zapisz', done = 'Zapisan
 
 const TX_HINT = 'Wpiszcie łączną kwotę w zł, która zeszła z konta (XTB pokazuje ją w historii transakcji).';
 
-function txForm(edit = null) {
+function txForm(edit = null, preset = null) {
   const acc = edit?.account_id ?? store.get('lastAccount', 'poboczne');
   const sellNow = edit?.type === 'sell';
   // Most-held investment first, then ETFs and bonds in their own groups.
   const held = Object.fromEntries(groupHoldings(data.portfolio.positions).map((h) => [h.instrument.id, h.value]));
-  const option = (i) => `<option value="${esc(i.id)}" ${i.id === (edit?.instrument_id ?? firstIns) ? 'selected' : ''}>${esc(i.id)} — ${esc(insName(i))}</option>`;
+  const option = (i) => `<option value="${esc(i.id)}" ${i.id === (edit?.instrument_id ?? preset ?? firstIns) ? 'selected' : ''}>${esc(i.id)} — ${esc(insName(i))}</option>`;
   const byHeld = (kind) => data.instruments.filter((i) => i.kind === kind).sort((a, b) => (held[b.id] || 0) - (held[a.id] || 0));
   const firstIns = byHeld('etf')[0]?.id;
   const form = openForm(edit ? `Edytuj ${edit.type === 'sell' ? 'sprzedaż' : 'zakup'}` : 'Dodaj zakup lub sprzedaż', `
@@ -789,6 +790,7 @@ function txForm(edit = null) {
       <optgroup label="ETF-y">${byHeld('etf').map(option).join('')}</optgroup>
       <optgroup label="Obligacje skarbowe">${byHeld('bond').map(option).join('')}</optgroup>
     </select></label>
+    ${edit ? '' : `<p class="hint">Nie ma na liście? <button type="button" class="link small" data-new="bond">Dodaj serię obligacji</button> · <button type="button" class="link small" data-new="etf">Dodaj ETF</button></p>`}
     <label>Konto<select name="account_id" required>
       ${data.accounts.map((a) => `<option value="${esc(a.id)}" ${a.id === acc ? 'selected' : ''}>${esc(accName(a))}</option>`).join('')}
     </select></label>
@@ -821,6 +823,11 @@ function txForm(edit = null) {
     store.set('lastAccount', f.account_id);
   }, edit ? 'Zapisz zmiany' : 'Zapisz', edit ? 'Zmiany zapisane' : 'Zapisano');
 
+  // A new series or ETF is added first, then this form opens again with it selected.
+  form.querySelectorAll('[data-new]').forEach((b) => b.addEventListener('click', () => {
+    const back = (id) => id && txForm(null, id);
+    if (b.dataset.new === 'bond') bondForm(back); else etfForm(back);
+  }));
   const hint = $('#tx-hint', form);
   const upd = () => {
     const ins = data.instruments.find((i) => i.id === form.instrument_id.value);
@@ -831,11 +838,13 @@ function txForm(edit = null) {
     if (u > 0 && t > 0) hint.textContent = `= ${zl2(t / u)} za jednostkę`;
     else hint.textContent = isBond ? 'Jedna obligacja kosztuje 100 zł (albo 99,90 zł przy zamianie starych na nowe).' : TX_HINT;
   };
-  form.instrument_id.addEventListener('change', () => {
+  const bondAccount = () => {
     const ins = data.instruments.find((i) => i.id === form.instrument_id.value);
     if (ins?.kind === 'bond' && data.accounts.some((a) => a.id === 'bonds')) form.account_id.value = 'bonds';
     upd();
-  });
+  };
+  form.instrument_id.addEventListener('change', bondAccount);
+  if (preset) bondAccount();
   form.units.addEventListener('input', () => {
     const ins = data.instruments.find((i) => i.id === form.instrument_id.value);
     if (ins?.kind === 'bond' && parseNum(form.units.value) > 0) form.total.value = parseNum(form.units.value) * 100;
@@ -845,7 +854,7 @@ function txForm(edit = null) {
   form.querySelectorAll('input[name=type]').forEach((r) => r.addEventListener('change', upd));
 }
 
-function etfForm() {
+function etfForm(after = null) {
   openForm('Dodaj ETF', `
     <label>Skrót (ticker)<input name="id" placeholder="np. VWCE" required maxlength="20"></label>
     <label>Nazwa<input name="name" placeholder="np. Vanguard FTSE All-World" required></label>
@@ -862,29 +871,53 @@ function etfForm() {
       id, name: f.name.trim(), kind: 'etf', yahoo_symbol: f.yahoo_symbol.trim().toUpperCase(),
       price_pln: price, prev_price_pln: price, price_date: price ? todayISO() : null,
     }));
-  });
+    return id;
+  }, 'Zapisz', 'Dodano ETF', after);
 }
 
-function bondForm() {
-  openForm('Dodaj serię obligacji', `
-    <label>Kod serii<input name="id" placeholder="np. EDO1036" required maxlength="20">
-      <small>Widnieje na rachunku obligacji, np. EDO1036 = 10-letnie EDO z wykupem w październiku 2036.</small></label>
+// Fixed-rate series (TOS, DOS) keep one rate for their whole life, so they need no margin and no yearly update.
+const FIXED_BONDS = { DOS: 2, TOS: 3 };
+const fixedYears = (id) => FIXED_BONDS[String(id).slice(0, 3).toUpperCase()] ?? 0;
+
+function bondForm(after = null) {
+  const form = openForm('Dodaj serię obligacji', `
+    <label>Kod serii<input name="id" placeholder="np. TOS1029 albo EDO1036" required maxlength="20" autocapitalize="characters">
+      <small>Widnieje na rachunku obligacji. Litery to rodzaj (TOS = 3-letnie stałe, EDO = 10-letnie), cyfry to miesiąc i rok wykupu, np. TOS1029 = październik 2029.</small></label>
     <div class="two">
-      <label>Oprocentowanie w 1. roku (%)<input name="first" inputmode="decimal" placeholder="np. 6,00" required></label>
-      <label>Marża (%)<input name="margin" inputmode="decimal" placeholder="np. 2,00" required></label>
+      <label><span id="b-first-l">Oprocentowanie w 1. roku (%)</span><input name="first" inputmode="decimal" placeholder="np. 6,00" required></label>
+      <label id="b-margin">Marża (%)<input name="margin" inputmode="decimal" placeholder="np. 2,00"></label>
     </div>
-    <p class="hint">Oba znajdziecie w ofercie na <a href="https://www.obligacjeskarbowe.pl" target="_blank" rel="noopener">obligacjeskarbowe.pl</a> z miesiąca zakupu. Marża to stała część, którą co roku dodaje się do inflacji. Potem dodajcie sam zakup przyciskiem „Dodaj zakup lub sprzedaż”.</p>`,
+    <p class="hint" id="b-hint"></p>`,
   async (f) => {
-    const id = f.id.trim().toUpperCase();
+    const id = f.id.trim().toUpperCase().replace(/\s+/g, '');
+    if (!/^[A-Z]{3}\d{4}$/.test(id)) throw new Error('Kod serii to 3 litery i 4 cyfry, np. TOS1029.');
     if (data.instruments.some((i) => i.id === id)) throw new Error(`${id} już jest na liście.`);
     const first = parseNum(f.first.replace('%', ''));
-    const margin = parseNum(f.margin.replace('%', ''));
-    if (!Number.isFinite(first) || !Number.isFinite(margin)) throw new Error('Oprocentowanie i marża muszą być liczbami, np. 6,00 i 2,00');
+    if (!Number.isFinite(first)) throw new Error('Oprocentowanie musi być liczbą, np. 6,00');
+    const years = fixedYears(id);
+    let margin = null;
+    if (!years) {
+      margin = parseNum(String(f.margin).replace('%', ''));
+      if (!f.margin || !Number.isFinite(margin)) throw new Error('Wpiszcie marżę, np. 2,00. Znajdziecie ją w ofercie z miesiąca zakupu.');
+    }
     await must(db.from('instruments').insert({
       id, name: `Obligacje ${id.slice(0, 3)}, seria ${id}`, kind: 'bond', currency: 'PLN',
-      bond_margin: margin, bond_rates: [first],
+      bond_margin: margin, bond_rates: years ? Array(years).fill(first) : [first],
     }));
-  });
+    return id;
+  }, 'Zapisz', 'Dodano serię obligacji', after);
+
+  const LINK = '<a href="https://www.obligacjeskarbowe.pl" target="_blank" rel="noopener">obligacjeskarbowe.pl</a>';
+  const upd = () => {
+    const years = fixedYears(form.id.value.trim());
+    $('#b-margin', form).hidden = !!years;
+    $('#b-first-l', form).textContent = years ? 'Oprocentowanie (stałe, %)' : 'Oprocentowanie w 1. roku (%)';
+    $('#b-hint', form).innerHTML = years
+      ? `Te obligacje mają to samo oprocentowanie przez wszystkie ${years} lata, więc nie trzeba go co roku uzupełniać. Stopę znajdziecie w ofercie na ${LINK} z miesiąca zakupu. Potem dodajcie sam zakup.`
+      : `Oprocentowanie i marżę znajdziecie w ofercie na ${LINK} z miesiąca zakupu. Marża to stała część, którą co roku dodaje się do inflacji. Potem dodajcie sam zakup.`;
+  };
+  form.id.addEventListener('input', upd);
+  upd();
 }
 
 // One box per bond year, labelled with the date that year starts, so nobody has to keep a list in their head.
@@ -906,7 +939,7 @@ function editBondForm(id) {
       <label>${k + 1}. rok${yearStart(k)}<input name="y${k}" inputmode="decimal" value="${rates[k] == null ? '' : fmtN.format(rates[k])}" placeholder="${k ? 'np. 5,95' : 'np. 7,25'}" ${k === 0 ? 'required' : ''}></label>`).join('')}
     </div>
     <label>Marża (%)<input name="margin" inputmode="decimal" value="${margin == null ? '' : fmtN.format(margin)}"></label>
-    <p class="hint">Każdy kolejny rok: marża${margin == null ? '' : ` (${rate(margin)})`} + inflacja podana przez GUS w miesiącu przed rocznicą zakupu.
+    <p class="hint">${fixedYears(id) ? 'Ta seria ma stałe oprocentowanie przez cały okres.' : `Każdy kolejny rok: marża${margin == null ? '' : ` (${rate(margin)})`} + inflacja podana przez GUS w miesiącu przed rocznicą zakupu.`}
       Gotową stopę znajdziecie na rachunku w Pekao albo na <a href="https://www.obligacjeskarbowe.pl" target="_blank" rel="noopener">obligacjeskarbowe.pl</a>.</p>`,
   async (f) => {
     const list = Array.from({ length: years }, (_, k) => String(f[`y${k}`] ?? '').replace('%', '').trim());
